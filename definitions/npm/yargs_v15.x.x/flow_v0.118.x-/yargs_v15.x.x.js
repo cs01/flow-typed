@@ -1,17 +1,18 @@
+
 declare module "yargs" {
-  declare type Argv = {
-    [key: string]: any,
+
+  declare type Argv<T> = {|
+    ...T,
     _: Array<string>,
     $0: string,
-    ...
-  };
+  |};
 
   declare type Options = $Shape<{
     alias: string | Array<string>,
     array: boolean,
     boolean: boolean,
     choices: Array<mixed>,
-    coerce: (arg: {[key: string]: any, ...} | any) => mixed,
+    coerce: (arg: {[key: string]: any} | any) => mixed,
     config: boolean,
     configParser: (configPath: string) => { [key: string]: mixed, ... },
     conflicts: string | Array<string> | { [key: string]: string, ... },
@@ -39,8 +40,9 @@ declare module "yargs" {
   declare type CommonModuleObject = {|
     command?: string | Array<string>,
     aliases?: Array<string> | string,
-    builder?: { [key: string]: Options, ... } | ((yargsInstance: Yargs) => mixed),
-    handler?: ((argv: Argv) => void) | ((argv: Argv) => Promise<void>)
+    // TODO infer Argv
+    builder?: OptionMap | ((yargsInstance: Yargs<{||}>) => Yargs<U>),
+    handler?: ((argv: Argv<U>) => void)
   |};
 
   declare type ModuleObjectDesc = {|
@@ -63,37 +65,32 @@ declare module "yargs" {
     | ModuleObjectDescribe
     | ModuleObjectDescription;
 
-  declare type MiddleWareCallback =
-    | (argv: Argv, yargsInstance?: Yargs) => void
-    | (argv: Argv, yargsInstance?: Yargs) => Promise<void>;
-
-  declare type Middleware = MiddlewareCallback | Array<MiddleWareCallback>;
-
-  declare class Yargs {
-    (args: Array<string>): Yargs;
+  declare class Yargs<T = {||}> {
+    (args: Array<string>): Yargs<T>;
 
     alias(key: string, alias: string): this;
     alias(alias: { [key: string]: string | Array<string>, ... }): this;
-    argv: Argv;
+    argv: Argv<T>;
     array(key: string | Array<string>): this;
     boolean(parameter: string | Array<string>): this;
-    check(fn: (argv: Argv, options: Array<string>) => ?boolean): this;
+    check(fn: (argv: Argv<T>, options: Array<string>) => ?boolean): this;
     choices(key: string, allowed: Array<string>): this;
     choices(allowed: { [key: string]: Array<string>, ... }): this;
     coerce(key: string, fn: (value: any) => mixed): this;
     coerce(object: { [key: string]: (value: any) => mixed, ... }): this;
     coerce(keys: Array<string>, fn: (value: any) => mixed): this;
 
+    // TODO infer Argv
     command(
-      cmd: string | Array<string>,
-      desc: string | false,
-      builder?: { [key: string]: Options, ... } | ((yargsInstance: Yargs) => mixed),
-      handler?: Function
+      command: string | Array<string>,
+      description: string | false,
+      builder?: OptionMap | ((yargsInstance: Yargs<{||}>) => Yargs<U>),
+      handler?: (argv:  Argv<U>) => (void | Promise<void>) 
     ): this;
 
     command(
-      cmd: string | Array<string>,
-      desc: string | false,
+      command: string | Array<string>,
+      description: string | false,
       module: ModuleObject
     ): this;
 
@@ -107,7 +104,6 @@ declare module "yargs" {
         include?: string | Function,
         recurse?: boolean,
         visit?: Function,
-        ...
       },
     ): this;
 
@@ -115,12 +111,12 @@ declare module "yargs" {
       cmd?: string,
       description?: string | false | (
         current: string,
-        argv: Argv,
+        argv: Argv<T>,
         done: (compeltion: Array<string>) => void
       ) => ?(Array<string> | Promise<Array<string>>),
       fn?: (
         current: string,
-        argv: Argv,
+        argv: Argv<T>,
         done: (completion: Array<string>) => void
       ) => ?(Array<string> | Promise<Array<string>>)
     ): this;
@@ -172,7 +168,7 @@ declare module "yargs" {
 
     exitProcess(enable: boolean): this;
 
-    fail(fn: (failureMessage: string, err: Error, yargs: Yargs) => mixed): this;
+    fail(fn: (failureMessage: string, err: Error, yargs: this) => mixed): this;
 
     getCompletion(args: Array<string>, fn: () => void): this;
 
@@ -210,10 +206,14 @@ declare module "yargs" {
       | "tr"
       | "zh_CN"
     ): this;
+
     locale(): string;
 
     middleware(
-      middlewareCallbacks: Middleware,
+      middlewareCallbacks: 
+        | (argv: Argv<T>, yargsInstance?: Yargs<T>) => (void | Promise<void>)
+        | Array<(argv: Argv<T>, yargsInstance?: Yargs<T>) => (void | Promise<void>)>
+        ,
       applyBeforeValidation?: boolean,
     ): this;
 
@@ -223,27 +223,30 @@ declare module "yargs" {
 
     number(key: string | Array<string>): this;
 
-    option(key: string, options?: Options): this;
-    option(optionMap: { [key: string]: Options, ... }): this;
 
-    options(key: string, options?: Options): this;
-    options(optionMap: { [key: string]: Options, ... }): this;
+    option <Key: string, Options>(key: Key, options?: Options): Yargs<{ ...T, [key: Key]: InferredOptionType<Options>}>;
+    // options is an alias for option
+    options<Key: string, Options>(key: Key, options?: Options): Yargs<{ ...T, [key: Key]: InferredOptionType<Options>}>;
+    
+    // other syntax for option
+    option <OptionMap>(optionMap: OptionMap): Yargs<{ ...T, ...$ObjMap<OptionMap, InferOptionMap> }>;
+    options<OptionMap>(optionMap: OptionMap): Yargs<{ ...T, ...$ObjMap<OptionMap, InferOptionMap> }>;
 
     parse(
       args?: string | Array<string>,
       context?: { [key: string]: any, ... },
-      parseCallback?: (err: Error, argv: Argv, output?: string) => void
-    ): Argv;
+      parseCallback?: (err: Error, argv: Argv<T>, output?: string) => void
+    ): Argv<T>;
     parse(
       args?: string | Array<string>,
-      parseCallback?: (err: Error, argv: Argv, output?: string) => void
-    ): Argv;
+      parseCallback?: (err: Error, argv: Argv<T>, output?: string) => void
+    ): Argv<T>;
 
-    parserConfiguration(configuration: {[key: string]: any, ...}): this;
+    parserConfiguration(configuration: {[key: string]: any}): this;
 
     pkgConf(key: string, cwd?: string): this;
 
-    positional(key: string, opt?: Options): this;
+    positional(key: string, opt?: Options): Yargs<{ ...T, [key: Key]: InferredOptionType<Options>}>;
 
     recommendCommands(): this;
 
@@ -276,7 +279,8 @@ declare module "yargs" {
     updateLocale(obj: { [key: string]: string, ... }): this;
     updateStrings(obj: { [key: string]: string, ... }): this;
 
-    usage(message: string, opts?: { [key: string]: Options, ... }): this;
+    // TODO infer Argv and add other valid ways to call
+    usage(message: string, opts?: OptionMap): this;
 
     version(): this;
     version(version: string | false): this;
@@ -290,5 +294,52 @@ declare module "yargs" {
     wrap(columns: number | null): this;
   }
 
-  declare module.exports: Yargs;
+  declare module.exports: Yargs<{||}>;
+
+  declare type InferredOptionType<Opts> = $Call<
+    & ((o: { type: "count", ... }) => number)
+    & ((o: { count: true }) => number)
+    & ((o: { required: string | true, ... }) => $NonMaybeType<MaybeOption<Opts>>)
+    & ((o: { required: string | true, ... }) => $NonMaybeType<MaybeOption<Opts>>)
+    & ((o: { demand: string | true, ... }) => $NonMaybeType<MaybeOption<Opts>>)
+    & ((o: { default: mixed} ) => mixed)
+    & ((o: mixed) => MaybeOption<Opts>)
+    ,
+    Opts
+  >;
+
+  declare type MaybeOption<Opts> = $Call<
+    & ((o: { type: "array", string: true }) => ?Array<string>)
+    & ((o: { type: "array", number: true }) => ?Array<number>)
+    & ((o: { type: "array", normalize: true }) => ?Array<string>)
+    & ((o: { array: true, type: "number" }) => ?Array<number>)
+    & ((o: { array: true, type: "string" }) => ?Array<string>)
+
+    & ((o: { array: true, string: true }) => ?Array<string>)
+    & ((o: { array: true, number: true }) => ?Array<number>)
+    & ((o: { array: true, normalize: true }) => ?Array<string>)
+
+    & ((o: { type: "array" }) => ?Array<string | number>)
+    & ((o: { array: true }) => ?Array<string | number>)
+
+    & ((o: { type: "number" }) => ?number)
+    & ((o: { type: "boolean" }) => ?boolean)
+    & ((o: { type: "string" }) => ?string)
+
+    & ((o: { string: true }) => ?string)
+    & ((o: { number: true }) => ?number)
+    & ((o: { boolean: true }) => ?boolean)
+
+    & ((o: { normalize: true }) => ?string)
+
+    // TODO get choice types to be strictly enforced
+    & ((o: { choices: mixed }) => mixed)
+    & ((o: {||}) => mixed)
+    ,
+    Opts
+  >;
+
+  declare type OptionMap = { [key: string]: Options, ...};
+
+  declare type InferOptionMap = <Opts>(o: Opts) => InferredOptionType<Opts>;
 }
